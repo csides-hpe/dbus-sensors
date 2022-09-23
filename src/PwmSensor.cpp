@@ -165,7 +165,7 @@ PwmSensor::PwmSensor(const std::string& name, const std::string& sysPath,
     }
 
     association = objectServer.add_interface(
-        "/xyz/openbmc_project/sensors/fan_pwm/" + name, association::interface);
+        "/xyz/openbmc_project/control/fan_pwm/" + name, association::interface); //changed to '/control/' from 'sensors' for GXP fans 
 
     // PowerSupply sensors should be associated with chassis board path
     // and inventory along with psu object.

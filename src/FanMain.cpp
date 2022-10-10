@@ -69,22 +69,18 @@ FanTypes getFanType(const fs::path& parentPath)
     if (canonical.ends_with("pwm-tacho-controller") ||
         canonical.ends_with("pwm_tach:tach"))
     {
-        std::cout <<"fan: aspeed found" <<std::endl;
         return FanTypes::aspeed;
     }
     if (canonical.ends_with("pwm-fan-controller"))
     {
-        std::cout <<"fan: nuvoton found" <<std::endl;
         return FanTypes::nuvoton;
     }
 
     if (canonical.ends_with("c1000c00.fanctrl"))
     {
-        std::cout <<"fan: gxp found" <<std::endl;
 		return FanTypes::gxp;
 	}
     // todo: will we need to support other types?
-    std::cout <<"fan: i2c-type assumed, path:" <<linkPath <<std::endl;
     return FanTypes::i2c;
 }
 void enablePwm(const fs::path& filePath)
@@ -258,8 +254,6 @@ void createSensors(
             return;
         }
 
-        std::cout <<"Test version: coutInFan_5" <<std::endl;
-
         // iterate through all found fan sensors, and try to match them with
         // configuration
         for (const auto& path : paths)
@@ -294,9 +288,6 @@ void createSensors(
 
                 baseConfiguration = &(*sensorBaseFind);
 
-                std::cout <<"baseConfiguration found: " <<baseConfiguration <<std::endl;
-                std::cout <<"InterfacePath:" <<path.str <<std::endl;
-
                 interfacePath = &path.str;
                 baseType = sensorTypes[fanType];
                 auto findIndex = baseConfiguration->second.find("Index");
@@ -308,18 +299,14 @@ void createSensors(
                 unsigned int configIndex = std::visit(
                     VariantToUnsignedIntVisitor(), findIndex->second);
 
-                std::cout <<"ConfigIndex: " <<configIndex <<", index: " <<index <<std::endl;
-
                 if (configIndex != index)
                 {
-                    std::cout <<"configIndex did not match index." <<index <<std::endl;
                     continue;
                 }
                 if (fanType == FanTypes::aspeed || fanType == FanTypes::nuvoton || fanType == FanTypes::gxp)
                 {
                     // there will be only 1 aspeed or nuvoton sensor object
                     // in sysfs, we found the fan
-                    std::cout <<"MATCHED: fanType: " <<fanType <<"; setting sensorData." <<std::endl;
                     sensorData = &cfgData;
                     break;
                 }

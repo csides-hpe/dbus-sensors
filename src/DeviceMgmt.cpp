@@ -60,7 +60,18 @@ static std::string deviceDirName(uint64_t bus, uint64_t address)
     return name.str();
 }
 
+//check if device has already been added to bus
 bool I2CDeviceParams::devicePresent() const
+{
+    fs::path path = i2cBusPath(bus) / deviceDirName(bus, address);
+
+    // Ignore errors; anything but a clean 'true' is fine as 'false'
+    std::error_code ec;
+    return fs::exists(path, ec);
+}
+
+//check if bindable-devices have been bound
+bool I2CDeviceParams::deviceReady() const
 {
     fs::path path = i2cBusPath(bus) / deviceDirName(bus, address);
 
@@ -76,7 +87,7 @@ bool I2CDeviceParams::devicePresent() const
 
 bool I2CDeviceParams::deviceStatic() const
 {
-    if (!devicePresent())
+    if (!deviceReady())
     {
         return false;
     }
@@ -105,30 +116,54 @@ I2CDevice::~I2CDevice()
 int I2CDevice::create() const
 {
     // If it's already instantiated, there's nothing we need to do.
-    if (params.devicePresent())
+    if (params.deviceReady())
     {
         return 0;
     }
-
-    // Try to create it: 'echo $devtype $addr > .../i2c-$bus/new_device'
-    fs::path ctorPath = i2cBusPath(params.bus) / "new_device";
-    std::ofstream ctor(ctorPath);
-    if (!ctor.good())
+    // If device is already added to the bus, but an expected driver binding hasn't happened yet
+    else if (!params.deviceReady() && params.devicePresent())  //if device is 'present' (handle exists on bus) but not 'ready' (missing an expected hwmon node) 
     {
-        std::cerr << "Failed to open " << ctorPath << "\n";
-        return -1;
+        fs::path ctorPath = "/sys/bus/i2c/drivers_probe";
+        std::ofstream ctor(ctorPath);
+        
+        if (!ctor.good())
+        {
+            std::cerr << "Failed to open " << ctorPath << "\n";
+            return -1;
+        }
+
+        ctor << deviceDirName(params.bus, params.address) << "\n";
+
+        ctor.flush();
+        if (!ctor.good())
+        {
+            std::cerr << "Failed to write to " << ctorPath << "\n";
+            return -1;
+        }
     }
 
-    ctor << params.type->name << " " << params.address << "\n";
-    ctor.flush();
-    if (!ctor.good())
+    else //if device does not exist at all
     {
-        std::cerr << "Failed to write to " << ctorPath << "\n";
-        return -1;
+        // Try to create it: 'echo $devtype $addr > .../i2c-$bus/new_device'
+        fs::path ctorPath = i2cBusPath(params.bus) / "new_device";
+        std::ofstream ctor(ctorPath);
+        if (!ctor.good())
+        {
+            std::cerr << "Failed to open " << ctorPath << "\n";
+            return -1;
+        }
+
+        ctor << params.type->name << " " << params.address << "\n";
+        ctor.flush();
+        if (!ctor.good())
+        {
+            std::cerr << "Failed to write to " << ctorPath << "\n";
+            return -1;
+        }
     }
 
     // Check if that created the requisite sysfs directory
-    if (!params.devicePresent())
+    if (!params.deviceReady())
     {
         destroy();
         return -1;
@@ -139,9 +174,9 @@ int I2CDevice::create() const
 
 int I2CDevice::destroy() const
 {
-    // No params.devicePresent() check on this like in create(), since it
+    // No params.deviceReady() check on this like in create(), since it
     // might be used to clean up after a device instantiation that was only
-    // partially successful (i.e. when params.devicePresent() would return
+    // partially successful (i.e. when params.deviceReady() would return
     // false but there's still a dummy i2c client device to remove)
 
     fs::path dtorPath = i2cBusPath(params.bus) / "delete_device";

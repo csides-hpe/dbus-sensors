@@ -96,6 +96,8 @@ static const I2CDeviceTypeMap sensorTypes{
     {"TMP464", I2CDeviceType{"tmp464", true}},
     {"TMP468", I2CDeviceType{"tmp468", true}},
     {"TMP75", I2CDeviceType{"tmp75", true}},
+    {"TMP411", I2CDeviceType{"tmp411", true}},
+    {"TMP1075", I2CDeviceType{"tmp1075", true}},
     {"W83773G", I2CDeviceType{"w83773g", true}},
 };
 
@@ -300,10 +302,13 @@ void createSensors(
             findFiles(root, R"(in_humidityrelative\d*_(input|raw))", paths);
             findFiles(fs::path("/sys/class/hwmon"), R"(temp\d+_input)", paths);
 
+            std::cerr << "Getter: Made it to the 'find files' stuff, bout to iterrate through paths\n";
+
             // iterate through all found temp and pressure sensors,
             // and try to match them with configuration
             for (auto& path : paths)
             {
+                std::cerr << "Looking at path: " <<path.string() << "\n";
                 std::smatch match;
                 const std::string pathStr = path.string();
                 auto directory = path.parent_path();
@@ -336,10 +341,14 @@ void createSensors(
 
                 uint64_t bus = 0;
                 uint64_t addr = 0;
+
+                std::cerr << "About to get device bus addr. \n";
                 if (!getDeviceBusAddr(deviceName, bus, addr))
                 {
                     continue;
                 }
+
+                std::cerr << "about to call getSensorParameters() on path @ " <<path.string() <<" with bus: " <<bus <<" " <<":" <<addr <<" \n";
 
                 auto thisSensorParameters = getSensorParameters(path);
                 auto findSensorCfg = configMap.find({bus, addr});
@@ -348,10 +357,15 @@ void createSensors(
                     continue;
                 }
 
+                
+
                 const std::string& interfacePath =
                     findSensorCfg->second.sensorPath;
+
+                std::cerr << "about to call devices.find(" <<interfacePath <<") \n";
                 auto findI2CDev = devices.find(interfacePath);
 
+                std::cerr << "about to do findI2CDev != check \n";
                 std::shared_ptr<I2CDevice> i2cDev;
                 if (findI2CDev != devices.end())
                 {
@@ -427,6 +441,7 @@ void createSensors(
                               << sensorName << " index " << index << "\n";
                 }
 
+                std::cerr << "Parsed thresholds \n";
                 float pollRate = getPollRate(baseConfigMap, pollRateDefault);
                 PowerState readState = getPowerState(baseConfigMap);
 
@@ -436,6 +451,7 @@ void createSensors(
                 {
                     sensor = nullptr;
                 }
+                std::cerr << "about to getfullHwmonFilePath and beyond \n";
                 auto hwmonFile = getFullHwmonFilePath(directory.string(),
                                                       "temp1", permitSet);
                 if (pathStr.starts_with("/sys/bus/iio/devices"))
@@ -446,22 +462,30 @@ void createSensors(
                 {
                     if (sensor != nullptr)
                     {
+                         std::cerr << "called sensor->activate! \n";
                         sensor->activate(*hwmonFile, i2cDev);
                     }
                     else
                     {
+                        std::cerr << "about to make shared HwmonTempSensor \n";
                         sensor = std::make_shared<HwmonTempSensor>(
                             *hwmonFile, sensorType, objectServer,
                             dbusConnection, io, sensorName,
                             std::move(sensorThresholds), thisSensorParameters,
                             pollRate, interfacePath, readState, i2cDev);
+                        std::cerr << "about to call sensor->setupRead on hwmon: " <<*hwmonFile <<"\n";
                         sensor->setupRead();
+                        std::cerr << "other-side of sensor->setupRead for hwmon: " <<*hwmonFile <<"\n";
+                        
                     }
                 }
+
+                std::cerr << "about to call hwmonName.erase stuff! w/ values...\n";
+                std::cerr << "sensorName: "<<sensorName;
                 hwmonName.erase(
                     remove(hwmonName.begin(), hwmonName.end(), sensorName),
                     hwmonName.end());
-
+                std::cerr << "got to other-size of hwmonName.erase, about to entre while loop \n";
                 // Looking for keys like "Name1" for temp2_input,
                 // "Name2" for temp3_input, etc.
                 int i = 0;
@@ -536,6 +560,7 @@ void createSensors(
     {
         types.push_back(type);
     }
+    std::cerr << "about to call getter->getConfiguration(types)! \n";
     getter->getConfiguration(types);
 }
 
